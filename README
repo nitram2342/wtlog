@@ -1,0 +1,62 @@
+This is Nitram's archaic work time logging tool. I use it for several years.
+It is far from being perfect. I think it is useful, because it is as simple
+as possible.
+
+There is a text file for every date. The text file format is shown below.
+It can be used for multiple customers and multiple projects.
+
+
+  Martin Schobert <martin@mailbeschleuniger.de>
+
+
+Usage:
+--------------------
+
+$ wtlog.pl cust1 start
+Current state    : working
+Sum of work time : 0 s
+Sum of breaks    : 0 s
+Netto work time  : 0 s
+
+
+$ wtlog.pl cust1 pause
+Current state    : pause
+Sum of work time : 23 m
+Sum of breaks    : 0 s
+Netto work time  : 23 m
+
+
+$ wtlog.pl cust1 pause
+Current state    : working
+Sum of work time : 28 m
+Sum of breaks    : 5 m
+Netto work time  : 23 m
+
+
+$ wtlog.pl cust1 edit
+[raises an editor]
+
+
+$ wtlog.pl cust1 finish
+
+
+File format:
+--------------------
+
+Files are placed unter ~/.wtlog/ and are named in the format of ISO date,
+underscore, customer short name and file suffix '.dat', e.g. 
+"2011-03-30_cust1.dat". An example content is given below:
+
+
+state: finished
+work_time: 2011-03-30 09:52:06 to 2011-03-30 17:59:20
+== Invoice logs ==
+
+- video codec testing (youtube)
+- on-the-job training (dilbert, xkcd, ...)
+== Personal logs ==
+
+Personal logs are kept private, while invoice logs are written to the time
+report. Personal logs can be used to remember things, like phone call conversations.
+
+

@@ -1,0 +1,82 @@
+\documentclass[11pt]{report}
+
+\usepackage[german]{babel}
+\usepackage[latin1]{inputenc}
+
+\usepackage{geometry}
+\geometry{verbose,a4paper,tmargin=15mm,bmargin=20mm,lmargin=20mm,rmargin=0mm}
+
+\setlength{\parindent}{0pt}
+\vspace{0.2cm}
+
+\begin{document}
+\setlength{\parindent}{0pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.5ex}
+
+
+
+\section*{Arbeitszeiten vom <TMPL_VAR Name=FIRST_DATE> bis zum <TMPL_VAR NAME=LAST_DATE>}
+
+\begin{tabular}{|p{4cm}|p{3.5cm}|p{3.5cm}|p{2cm}|p{2cm}|}
+	\hline
+	\textbf{Woche} & 
+	\textbf{Von} & 
+	\textbf{Bis} & 
+	\textbf{Art} & 
+	\textbf{Netto-Arbeitszeit} \\
+	\hline
+\end{tabular}
+\\
+\\
+
+<TMPL_LOOP Name=LOG_LOOP>
+
+\begin{tabular}{|p{4cm}|p{3.5cm}|p{3.5cm}|p{2cm}|p{2cm}|}
+	\hline
+
+	\hline
+	<TMPL_LOOP Name=WT_LOOP>
+         	<TMPL_VAR Name=WEEK_INFO> & 
+	        <TMPL_VAR Name=START_TIME> & 
+		<TMPL_VAR Name=END_TIME> & 
+		<TMPL_VAR Name=KIND> & 
+		<TMPL_VAR Name=NETTO_WT> \\
+	</TMPL_LOOP> 
+
+	<TMPL_IF Name=ILOG>
+	
+	\hline
+	\multicolumn{5}{|l|}{ \parbox[b]{15cm}{ 
+
+\small { \texttt{
+<TMPL_VAR Name=ILOG> 
+} }
+ } } \\
+	\hline
+	</TMPL_IF>
+	\hline
+\end{tabular}
+\\
+\\
+<TMPL_IF NAME=DISPLAY_WEEK_WORKTIME>
+\begin{tabular}{|p{14.3cm}|p{2cm}|}
+	\hline
+	\textbf{Wochenarbeitszeit:} & 
+	\textbf{<TMPL_VAR Name=WEEK_WORKTIME> } \\
+	\hline
+\end{tabular}
+\\
+\\
+</TMPL_IF>
+
+</TMPL_LOOP>
+
+\begin{tabular}{|p{14.3cm}|p{2cm}|}
+	\hline
+	\textbf{Gesamtarbeitszeit:} & 
+	\textbf{<TMPL_VAR Name=OVERALL_WORKTIME> } \\
+	\hline
+\end{tabular}
+
+\end{document}
