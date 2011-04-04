@@ -12,6 +12,10 @@ It can be used for multiple customers and multiple projects.
 Usage:
 --------------------
 
+$ wtlog.pl
+wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport]
+
+
 $ wtlog.pl cust1 start
 Current state    : working
 Sum of work time : 0 s
@@ -37,7 +41,20 @@ $ wtlog.pl cust1 edit
 [raises an editor]
 
 
-$ wtlog.pl cust1 finish
+$ wtlog.pl cust1 stop
+[...]
+
+
+Time report:
+--------------------
+
+You can generate work time reports with wtlog. Wtlog uses a latex template and renders
+the invoice logs into this template.
+
+$ wtlog.pl cust1 timereport 2011-03-01 2011-04-01
+[...]
+
+(The second date of the date range is not included in the list.)
 
 
 File format:
