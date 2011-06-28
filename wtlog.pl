@@ -734,17 +734,19 @@ sub render_timereport {
 
 sub time_span {
     my $time_record = shift;
-
+    my $ret = 0;
     if(defined $time_record->{finish}) {
 	my ($Dd,$Dh,$Dm,$Ds) = Delta_DHMS( @{$time_record->{start}}, 
 					   @{$time_record->{finish}});
-	return $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
+	$ret = $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
     }
     else {
 	my ($Dd,$Dh,$Dm,$Ds) = Delta_DHMS( @{$time_record->{start}}, 
 					   Today_and_Now());
-	return $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
+	$ret = $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
     }
+    die "invalid time: duration cannot be negative." if($ret < 0);
+    return $ret;
 }
 
 sub indent {
