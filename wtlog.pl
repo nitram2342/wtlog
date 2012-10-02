@@ -236,8 +236,9 @@ wt_checkdir($dir);
 my $stat_file = $dir . '/.current.' . $customer; # the file that contais the current log file
 
 my $filename = get_current_file($stat_file);
+my $new_filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", @today, $customer);
 if($filename eq '') {
-    $filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", @today, $customer);
+    $filename = $new_filename;
 }
 
 #
@@ -245,25 +246,26 @@ if($filename eq '') {
 #
 
 if($cmd eq 'start') {
+
+    # first, check if there exists an unfinished session
     my $record = load_record($filename);
 
-    $record->{work_time} = [] if(not exists $record->{work_time});
 
-    if(($record->{state} eq '') or
-	($record->{state} eq 'finished')) {
-
+    if(exists($record->{state}) and
+       ($record->{state} ne 'finished')) {
+	die "invalid state $record->{state}\n";
+    }
+    else {
+	my $record = {};
+	$record->{work_time} = [];
 	push @{$record->{work_time}},  { start => [Today_and_Now()],
 					 finish => undef};
 	$record->{state} =  'working';
 
-	write_record($filename, $record);
+	write_record($new_filename, $record);
 	wt_print_info($record);
-	set_current_file($stat_file, $filename);
+	set_current_file($stat_file, $new_filename);
     }
-    else {
-	die "invalid state $record->{state}\n";
-    }
-
 }
 elsif(($cmd eq 'finish') or ($cmd eq 'end') or ($cmd eq 'stop')) {
     my $record = load_record($filename);
@@ -556,7 +558,7 @@ sub get_current_file {
 	open(STAT, "< $stat_file") or die "can't read stat_file: $!\n";
 	$result = <STAT>;
 	chomp($result);
-	print "got [$result]\n";
+#	print "got [$result]\n";
 	close STAT;
     }
     return $result;
@@ -634,7 +636,7 @@ sub render_timereport {
     my $first_date = shift;
     my $last_date = shift;
     my $customer = shift;
-    my $base_filename = "${first_date}_t__${last_date}___${customer}___";
+    my $base_filename = "${first_date}__${last_date}___${customer}___";
     
     my @workdays;
     my $overall_wt = 0;
@@ -643,6 +645,8 @@ sub render_timereport {
     my @files = @_;
 
     foreach my $file (@files) {
+
+	print "+ Processing file $file\n";
 
 	my $rec = load_record($file);
 	if($rec->{state} ne 'finished') {
