@@ -228,7 +228,11 @@ my $customer = shift;
 my $cmd = shift;
 
 if((not defined $customer) or (not defined $cmd)) {
-    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport] \n";
+    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport | holiday] \n";
+}
+
+if($customer !~ m!^[a-z\d\_\-\.]+$!) {
+    die "Error: invalid identifier string used for the customer name.\n";
 }
 
 my @today = Today();
@@ -284,6 +288,38 @@ elsif(($cmd eq 'finish') or ($cmd eq 'end') or ($cmd eq 'stop')) {
     else {
 	die "invalid state $record->{state}\n";
     }
+}
+elsif($cmd eq 'holiday') {
+    my $date = shift;
+    my $hours = shift;
+
+    if(not defined($date) or not defined($hours)) {
+	die "wtlog.pl <customer> holiday <date> <hours>\n" .
+	    "\n" .
+	    "where <date> is in the form of yyyy-mm-dd and <hours> is the number of regular work hours.\n";
+    }
+
+    my $date_start = ts_parse($date);
+    if(not defined $date_start) {
+	die "Error: invalid date format.\n";
+    }
+
+    my $minutes = $hours * 60;
+
+    $date_start->[3] = 9; # start at 9:00
+    my @date_end = Add_Delta_DHMS(@$date_start, 0, 0, $minutes, 0);
+    
+    my $record = {};
+    push @{$record->{holiday}},  { start => $date_start,
+				   finish => \@date_end};
+    $record->{state} =  'finished';
+    $record->{invoice_logs} = '- Holiday';
+
+    my $new_filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", $date_start->[0], $date_start->[1], $date_start->[2], $customer);
+    write_record($new_filename, $record);
+    wt_print_info($record);
+#    print Dumper($record);
+
 }
 elsif($cmd eq 'edit') {
 
@@ -398,6 +434,11 @@ sub load_record {
 		push @{$r->{pause}}, { start => ts_parse($1),
 				       finish => ts_parse($2)};
 	    }
+	    elsif((not $log_section) and ($line =~ m!^holiday: (.*?) to (.*)!)) {
+		$r->{holiday} = [] if(not exists $r->{holiday});
+		push @{$r->{holiday}}, { start => ts_parse($1),
+					 finish => ts_parse($2)};
+	    }
 	    elsif($line =~ m!^==\s+Invoice\s+logs\s+==!) {
 		$log_section = 1;
 	    }
@@ -440,6 +481,11 @@ sub write_record {
 	    "work_time: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
     }
 
+    foreach  ( @{$record->{holiday}}  ) { 
+	print WTLOGFILE 
+	    "holiday: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
+    }
+
     foreach  ( @{$record->{pause}}  ) { 
 	print WTLOGFILE 
 	    "pause: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
@@ -459,6 +505,7 @@ sub wt_info {
 
     my $sum_breaks = 0;
     my $sum_wt = 0;
+    my $sum_holiday = 0;
 
     foreach  ( @{$record->{pause}}  ) { 
 	$sum_breaks += time_span($_);
@@ -468,8 +515,13 @@ sub wt_info {
 	$sum_wt += time_span($_);
     }
 
+    foreach  ( @{$record->{holiday}}  ) { 
+	$sum_holiday += time_span($_);
+    }
+
     return { sum_wt => $sum_wt,
 	     sum_breaks => $sum_breaks,
+	     sum_holiday => $sum_holiday,
 	     netto_work_time => $sum_wt- $sum_breaks
 	     };
 }
@@ -483,6 +535,7 @@ sub wt_print_info {
     print "Sum of work time : ", periode_to_str($stats->{sum_wt}), "\n";
     print "Sum of breaks    : ", periode_to_str($stats->{sum_breaks}), "\n";
     print "Netto work time  : ", periode_to_str($stats->{netto_work_time}), "\n";
+    print "Holiday          : ", periode_to_str($stats->{sum_holiday}), "\n";
 
 }
 
@@ -640,24 +693,34 @@ sub render_timereport {
     
     my @workdays;
     my $overall_wt = 0;
+    my $overall_sparetime = 0;
     my $week_worktime = 0;
+    my $week_sparetime = 0;
     my $last_week = 0;
     my @files = @_;
+
+    # first, check all files
+    foreach my $file (@files) {
+	my $rec = load_record($file);
+	if($rec->{state} ne 'finished') {
+	    die "File $file is not in state finished.";
+	}
+    }
 
     foreach my $file (@files) {
 
 	print "+ Processing file $file\n";
 
 	my $rec = load_record($file);
-	if($rec->{state} ne 'finished') {
-	    die "File $file is not in state finished.";
-	}
 
 #	wt_print_info($rec);
 #	print Dumper($rec->{work_time}->[0]->{start});
 	
 	my @worktimes;
+	my @sparetimes;
 	my $netto_wt = 0;
+	my $sparetime = 0;
+
 	foreach (@{$rec->{work_time}}) { 
 	    $_->{KIND} = 'Arbeit'; 
 	    push @worktimes, $_; 
@@ -668,6 +731,12 @@ sub render_timereport {
 	    push @worktimes, $_;
 	    $netto_wt -= time_span($_);
 	}
+	foreach (@{$rec->{holiday}}) { 
+	    $_->{KIND} = 'Urlaub'; 
+	    push @sparetimes, $_;
+	    $sparetime += time_span($_);
+	    # no work time
+	}
 
 	foreach my $i (@worktimes) {
 	    $i->{START_TIME} = ts_to_str($i->{start});
@@ -675,7 +744,17 @@ sub render_timereport {
 #	    print Dumper(\@worktimes);
 	}
 
-	my @start_date = @{$rec->{work_time}->[0]->{start}}[0..2];
+#	my $key =  ? 'holiday' : 'work_time';
+	my @start_date;
+	if(exists($rec->{holiday}) and ($#{$rec->{holiday}} > -1)) {
+	    print Dumper($rec);
+	    @start_date = @{$rec->{holiday}->[0]->{start}}[0..2];
+	}
+	else {
+	    @start_date = @{$rec->{work_time}->[0]->{start}}[0..2];
+	}
+	print "start date: @start_date\n";
+
 	my $week = Week_of_Year(@start_date);
 	my $week_day = Day_of_Week(@start_date);
 
@@ -697,17 +776,22 @@ sub render_timereport {
 
 	if($week != $last_week) {
 	    $week_worktime = $netto_wt;
+	    $week_sparetime = $sparetime;
 	}
 	else {
 	    $week_worktime += $netto_wt;
+	    $week_sparetime += $sparetime;
 	}
 
 	push @workdays, { WT_LOOP => \@worktimes,
 			  ILOG => $log,
 			  WEEK_CHANGE_BEFORE => ($week != $last_week) ? 1:0,
-			  WEEK_WORKTIME => periode_to_str($week_worktime) };
+			  WEEK_WORKTIME => periode_to_str($week_worktime),
+			  WEEK_SPARETIME => periode_to_str($week_sparetime),
+			  WEEK_SUM => periode_to_str($week_sparetime + $week_worktime)};
 
 	$overall_wt += $netto_wt;
+	$overall_sparetime += $sparetime;
 
 	$last_week = $week;
 
@@ -728,7 +812,9 @@ sub render_timereport {
     $template->param(FIRST_DATE => ts_to_hr_date(ts_parse($first_date)),
 		     LAST_DATE  => ts_to_hr_date(ts_parse($last_date)),
 		     LOG_LOOP => \@workdays,
-		     OVERALL_WORKTIME => periode_to_str($overall_wt)
+		     OVERALL_WORKTIME => periode_to_str($overall_wt),
+		     OVERALL_SPARETIME => periode_to_str($overall_sparetime),
+		     OVERALL_SUM => periode_to_str($overall_sparetime + $overall_wt)
 		     );
     print REPORT $template->output();
     close REPORT;
