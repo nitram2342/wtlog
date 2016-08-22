@@ -20,7 +20,7 @@
 
 \begin{tabular}{|p{4cm}|p{3.5cm}|p{3.5cm}|p{2cm}|p{2cm}|}
 	\hline
-	\textbf{Woche} & 
+	\textbf{Woche und Tag} & 
 	\textbf{Von} & 
 	\textbf{Bis} & 
 	\textbf{Art} & 
@@ -62,11 +62,17 @@
 <TMPL_IF NAME=DISPLAY_WEEK_WORKTIME>
 \begin{tabular}{|p{14.3cm}|p{2cm}|}
 	\hline
+	\textbf{Wochennummer:} & 
+	\textbf{<TMPL_VAR Name=WEEK_NUM> } \\
+	\hline
 	\textbf{Wochenarbeitszeit:} & 
 	\textbf{<TMPL_VAR Name=WEEK_WORKTIME> } \\
 	\hline
 	\textbf{Urlaub und Feiertage:} & 
-	\textbf{<TMPL_VAR Name=WEEK_SPARETIME> } \\
+	\textbf{<TMPL_VAR Name=WEEK_HOLIDAY>} \\
+	\hline
+	\textbf{Krankentage:} & 
+	\textbf{<TMPL_VAR Name=WEEK_ILL> } \\
 	\hline
 	\textbf{Summe:} & 
 	\textbf{<TMPL_VAR Name=WEEK_SUM> } \\
@@ -80,13 +86,19 @@
 
 \begin{tabular}{|p{14.3cm}|p{2cm}|}
 	\hline
+	\textbf{Anzahl Wochen:} & 
+	\textbf{<TMPL_VAR Name=OVERALL_WEEKS> } \\
+	\hline
 	\textbf{Gesamtarbeitszeit:} & 
 	\textbf{<TMPL_VAR Name=OVERALL_WORKTIME> } \\
 	\hline
 	\textbf{Gesamtferienzeit:} & 
-	\textbf{<TMPL_VAR Name=OVERALL_SPARETIME> } \\
+	\textbf{<TMPL_VAR Name=OVERALL_HOLIDAY> } \\
 	\hline
-	\textbf{Summe:} & 
+	\textbf{Gesamtkrankentage:} & 
+	\textbf{<TMPL_VAR Name=OVERALL_ILL> } \\
+	\hline	
+        \textbf{Summe:} & 
 	\textbf{<TMPL_VAR Name=OVERALL_SUM> } \\
 	\hline
 \end{tabular}

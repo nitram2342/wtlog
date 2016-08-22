@@ -228,7 +228,7 @@ my $customer = shift;
 my $cmd = shift;
 
 if((not defined $customer) or (not defined $cmd)) {
-    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport | holiday] \n";
+    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport | holiday-priv | holiday-bank | ill | aza ] \n";
 }
 
 if($customer !~ m!^[a-z\d\_\-\.]+$!) {
@@ -289,36 +289,22 @@ elsif(($cmd eq 'finish') or ($cmd eq 'end') or ($cmd eq 'stop')) {
 	die "invalid state $record->{state}\n";
     }
 }
-elsif($cmd eq 'holiday') {
+elsif($cmd =~ m!^(holiday\-.*|ill|aza)$!) {
+    my $mode = lc($1);
     my $date = shift;
     my $hours = shift;
 
+    $mode =~ s!\-!_!g;
+
     if(not defined($date) or not defined($hours)) {
-	die "wtlog.pl <customer> holiday <date> <hours>\n" .
+	die "wtlog.pl <customer> <mode> <date> <hours>\n" .
 	    "\n" .
-	    "where <date> is in the form of yyyy-mm-dd and <hours> is the number of regular work hours.\n";
+	    "\t<mode> is 'holiday-bank', 'holiday-priv', 'ill' or 'aza''\n".
+	    "\t<date> is in the form of yyyy-mm-dd\n".
+	    "\t<hours> is the number of regular work hours.\n";
     }
 
-    my $date_start = ts_parse($date);
-    if(not defined $date_start) {
-	die "Error: invalid date format.\n";
-    }
-
-    my $minutes = $hours * 60;
-
-    $date_start->[3] = 9; # start at 9:00
-    my @date_end = Add_Delta_DHMS(@$date_start, 0, 0, $minutes, 0);
-    
-    my $record = {};
-    push @{$record->{holiday}},  { start => $date_start,
-				   finish => \@date_end};
-    $record->{state} =  'finished';
-    $record->{invoice_logs} = '- Holiday';
-
-    my $new_filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", $date_start->[0], $date_start->[1], $date_start->[2], $customer);
-    write_record($new_filename, $record);
-    wt_print_info($record);
-#    print Dumper($record);
+    create_record_by_mode($mode, $date, $hours);
 
 }
 elsif($cmd eq 'edit') {
@@ -387,6 +373,33 @@ else {
 }
 
 
+sub create_record_by_mode {
+    my $mode = shift;
+    my $date = shift;
+    my $hours = shift;
+
+    my $date_start = ts_parse($date);
+    if(not defined $date_start) {
+	die "Error: invalid date format.\n";
+    }
+
+    my $minutes = $hours * 60;
+
+    $date_start->[3] = 9; # start at 9:00
+    my @date_end = Add_Delta_DHMS(@$date_start, 0, 0, $minutes, 0);
+    
+    my $record = {};
+    push @{$record->{$mode}},  { start => $date_start,
+						finish => \@date_end};
+    $record->{state} =  'finished';
+    $record->{invoice_logs} = $mode;
+
+    my $new_filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", $date_start->[0], $date_start->[1], $date_start->[2], $customer);
+    write_record($new_filename, $record);
+    wt_print_info($record);
+#    print Dumper($record);
+}
+
 sub wt_checkdir {
     my $dir = shift;
     if(not -d $dir) {
@@ -411,12 +424,12 @@ sub load_record {
 	    elsif((not $log_section) and ($line =~ m!^work_time: (.*?) to (.*)!)) {
 		$r->{work_time} = [] if(not exists $r->{work_time});
 		push @{$r->{work_time}}, { start => ts_parse($1),
-				       finish => ts_parse($2)};
+					   finish => ts_parse($2)};
 	    }
 	    elsif((not $log_section) and ($line =~ m!^work_time: (.*?) for (.*)!)) {
 		$r->{work_time} = [] if(not exists $r->{work_time});
 		push @{$r->{work_time}}, { start => ts_parse($1),
-				       finish => parse_and_calc($2, ts_parse($1))};
+					   finish => parse_and_calc($2, ts_parse($1))};
 	    }
 	    elsif((not $log_section) and ($line =~ m!^personal_start: (.*)!)) {
 		$r->{work_time} = [] if(not exists $r->{work_time});
@@ -434,10 +447,17 @@ sub load_record {
 		push @{$r->{pause}}, { start => ts_parse($1),
 				       finish => ts_parse($2)};
 	    }
+	    elsif((not $log_section) and ($line =~ m!^(holiday\_.*|ill|aza): (.*?) to (.*)!)) {
+		my $mode = $1;
+		$r->{$mode} = [] if(not exists $r->{$mode});
+		push @{$r->{$mode}}, { start => ts_parse($2),
+				       finish => ts_parse($3)};
+	    }
 	    elsif((not $log_section) and ($line =~ m!^holiday: (.*?) to (.*)!)) {
-		$r->{holiday} = [] if(not exists $r->{holiday});
-		push @{$r->{holiday}}, { start => ts_parse($1),
-					 finish => ts_parse($2)};
+		my $mode = 'holiday_priv';
+		$r->{$mode} = [] if(not exists $r->{$mode});
+		push @{$r->{$mode}}, { start => ts_parse($1),
+				       finish => ts_parse($2)};
 	    }
 	    elsif($line =~ m!^==\s+Invoice\s+logs\s+==!) {
 		$log_section = 1;
@@ -463,6 +483,18 @@ sub load_record {
     return $r;
 }
 
+sub write_sub_record {
+    my $record = shift;
+    my $key = shift;
+    my $fh = shift;
+    
+    foreach  ( @{$record->{$key}}  ) { 
+	print WTLOGFILE 
+	    $key, ": ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
+    }
+
+}
+
 sub write_record {
     my $filename = shift;
     my $record = shift;
@@ -476,20 +508,13 @@ sub write_record {
     print WTLOGFILE
 	"state: ", $record->{state}, "\n";
     
-    foreach  ( @{$record->{work_time}}  ) { 
-	print WTLOGFILE 
-	    "work_time: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
-    }
+    write_sub_record($record, 'work_time', \*WTLOGFILE);
+    write_sub_record($record, 'pause', \*WTLOGFILE);
+    write_sub_record($record, 'holiday_bank', \*WTLOGFILE);
+    write_sub_record($record, 'holiday_priv', \*WTLOGFILE);
+    write_sub_record($record, 'ill', \*WTLOGFILE);
+    write_sub_record($record, 'aza', \*WTLOGFILE);
 
-    foreach  ( @{$record->{holiday}}  ) { 
-	print WTLOGFILE 
-	    "holiday: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
-    }
-
-    foreach  ( @{$record->{pause}}  ) { 
-	print WTLOGFILE 
-	    "pause: ", ts_to_str($_->{start}), " to ", ts_to_str($_->{finish}), "\n";
-    }
 
     print WTLOGFILE
 	"== Invoice logs ==\n",
@@ -506,6 +531,7 @@ sub wt_info {
     my $sum_breaks = 0;
     my $sum_wt = 0;
     my $sum_holiday = 0;
+    my $sum_ill = 0;
 
     foreach  ( @{$record->{pause}}  ) { 
 	$sum_breaks += time_span($_);
@@ -515,13 +541,22 @@ sub wt_info {
 	$sum_wt += time_span($_);
     }
 
-    foreach  ( @{$record->{holiday}}  ) { 
+    foreach  ( @{$record->{holiday_priv}}  ) { 
 	$sum_holiday += time_span($_);
+    }
+
+    foreach  ( @{$record->{holiday_bank}}  ) { 
+	$sum_holiday += time_span($_);
+    }
+
+    foreach  ( @{$record->{ill}}  ) { 
+	$sum_ill += time_span($_);
     }
 
     return { sum_wt => $sum_wt,
 	     sum_breaks => $sum_breaks,
 	     sum_holiday => $sum_holiday,
+	     sum_ill => $sum_ill,
 	     netto_work_time => $sum_wt- $sum_breaks
 	     };
 }
@@ -536,6 +571,7 @@ sub wt_print_info {
     print "Sum of breaks    : ", periode_to_str($stats->{sum_breaks}), "\n";
     print "Netto work time  : ", periode_to_str($stats->{netto_work_time}), "\n";
     print "Holiday          : ", periode_to_str($stats->{sum_holiday}), "\n";
+    print "Ill              : ", periode_to_str($stats->{sum_ill}), "\n";
 
 }
 
@@ -567,11 +603,14 @@ sub ts_parse {
     if($str =~ m!(\d\d\d\d)-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)!) {
 	return [ $1, $2, $3, $4, $5, $6 ];
     }
-    elsif($str =~ m!(\d\d\d\d)-(\d\d)-(\d\d)!) {
+    elsif($str =~ m!(\d\d\d\d)-(\d\d)-(\d\d)$!) {
 	return [ $1, $2, $3, 0, 0, 0];
     }
-    else {
+    elsif($str eq '') {
 	return undef;
+    }
+    else {
+	die "+ Error: invalid timestamp: '$str'\n";
     }
 }
 
@@ -693,13 +732,19 @@ sub render_timereport {
     
     my @workdays;
     my $overall_wt = 0;
-    my $overall_sparetime = 0;
+    my $overall_holiday = 0;
+    my $overall_ill = 0;
+
     my $week_worktime = 0;
-    my $week_sparetime = 0;
+    my $week_holiday = 0;
+    my $week_ill = 0;
+    
     my $last_week = 0;
     my @files = @_;
 
-    # first, check all files
+    my $overall_weeks = 0;
+
+    # first, check all files - load record and check state
     foreach my $file (@files) {
 	my $rec = load_record($file);
 	if($rec->{state} ne 'finished') {
@@ -717,44 +762,70 @@ sub render_timereport {
 #	print Dumper($rec->{work_time}->[0]->{start});
 	
 	my @worktimes;
-	my @sparetimes;
+	my @holidays;
+	my @ill;
 	my $netto_wt = 0;
-	my $sparetime = 0;
+	my $holiday = 0;
+	my $ill = 0;
 
+	# add worktime to worktime
 	foreach (@{$rec->{work_time}}) { 
 	    $_->{KIND} = 'Arbeit'; 
 	    push @worktimes, $_; 
 	    $netto_wt += time_span($_);
 	}
+	# subtract pauses
 	foreach (@{$rec->{pause}}) { 
 	    $_->{KIND} = 'Pause'; 
 	    push @worktimes, $_;
 	    $netto_wt -= time_span($_);
 	}
-	foreach (@{$rec->{holiday}}) { 
+
+	# process holidays
+	foreach (@{$rec->{holiday_bank}}, @{$rec->{holiday_priv}}) { 
 	    $_->{KIND} = 'Urlaub'; 
-	    push @sparetimes, $_;
-	    $sparetime += time_span($_);
+	    push @holidays, $_;
+	    $holiday += time_span($_);
+	    # no work time
+	}
+	# process AZAs
+	foreach (@{$rec->{aza}}) { 
+	    $_->{KIND} = 'AZA'; 
+	    push @holidays, $_;
+	    $holiday += time_span($_);
 	    # no work time
 	}
 
-	foreach my $i (@worktimes) {
-	    $i->{START_TIME} = ts_to_str($i->{start});
-	    $i->{END_TIME} = ts_to_str($i->{finish});
-#	    print Dumper(\@worktimes);
+	# process illness times
+	foreach (@{$rec->{ill}}) { 
+	    $_->{KIND} = 'Krank'; 
+	    push @ill, $_;
+	    $ill += time_span($_);
+	    # no work time
 	}
 
-#	my $key =  ? 'holiday' : 'work_time';
+#	foreach my $i (@worktimes) {
+#	    $i->{START_TIME} = ts_to_str($i->{start});
+#	    $i->{END_TIME} = ts_to_str($i->{finish});
+##	    print Dumper(\@worktimes);
+#	}
+
+
 	my @start_date;
-	if(exists($rec->{holiday}) and ($#{$rec->{holiday}} > -1)) {
-	    print Dumper($rec);
-	    @start_date = @{$rec->{holiday}->[0]->{start}}[0..2];
+	# extract date from records
+	foreach my $key (qw(holiday_bank holiday_priv ill aza work_time)) {
+	    if(exists($rec->{$key}) and ($#{$rec->{$key}} > -1)) {
+		#print Dumper($rec);
+		@start_date = @{$rec->{$key}->[0]->{start}}[0..2];
+	    }	    
 	}
-	else {
-	    @start_date = @{$rec->{work_time}->[0]->{start}}[0..2];
-	}
-	print "start date: @start_date\n";
 
+	if(not @start_date) {
+	    print "+ Error: No start date for this record:\n";
+	    print Dumper($rec);
+	}
+
+	# calc day of week and calendar week in year
 	my $week = Week_of_Year(@start_date);
 	my $week_day = Day_of_Week(@start_date);
 
@@ -764,6 +835,7 @@ sub render_timereport {
 	$worktimes[0]->{WEEK_INFO} = "KW $week / " . $weekday_name[$week_day - 1];
 
 
+	# prepare text log entry
 	my $log = "\n" . $rec->{invoice_logs};
 	$log =~ s!\n+$!!s;
 	$log =~ s!\"!\'!g;
@@ -772,26 +844,47 @@ sub render_timereport {
 #	$log =~ s! !~!g;
 	$log =~ s!\n!"\\\\ \n"!egs;
 
-	print STDOUT $log;
+#	print STDOUT $log;
 
+	# assign week stats
 	if($week != $last_week) {
 	    $week_worktime = $netto_wt;
-	    $week_sparetime = $sparetime;
+	    $week_holiday = $holiday;
+	    $week_ill = $ill;
+	    $overall_weeks++;
 	}
 	else {
 	    $week_worktime += $netto_wt;
-	    $week_sparetime += $sparetime;
+	    $week_holiday += $holiday;
+	    $week_ill += $ill;
 	}
 
-	push @workdays, { WT_LOOP => \@worktimes,
+	my @tmp_records;
+	push @tmp_records, @worktimes;
+	push @tmp_records, @holidays;
+	push @tmp_records, @ill;
+
+	foreach my $i (@tmp_records) {
+	    $i->{START_TIME} = $i->{start} ? ts_to_str($i->{start}) : '-';
+	    $i->{END_TIME} = $i->{finish} ? ts_to_str($i->{finish}) : '-';
+	}
+
+	if($week_ill > 0) {
+	    print "$week_ill XXXXXXXXXXXXX ", periode_to_str($week_ill) ,"\n";
+	}
+
+	push @workdays, { WT_LOOP => \@tmp_records,
 			  ILOG => $log,
 			  WEEK_CHANGE_BEFORE => ($week != $last_week) ? 1:0,
 			  WEEK_WORKTIME => periode_to_str($week_worktime),
-			  WEEK_SPARETIME => periode_to_str($week_sparetime),
-			  WEEK_SUM => periode_to_str($week_sparetime + $week_worktime)};
+			  WEEK_HOLIDAY => periode_to_str($week_holiday),
+			  WEEK_ILL => periode_to_str($week_ill),
+			  WEEK_SUM => periode_to_str($week_holiday + $week_worktime + $week_ill),
+			  WEEK_NUM => $overall_weeks};
 
 	$overall_wt += $netto_wt;
-	$overall_sparetime += $sparetime;
+	$overall_holiday += $holiday;
+	$overall_ill += $ill;
 
 	$last_week = $week;
 
@@ -801,7 +894,9 @@ sub render_timereport {
 	    $workdays[$i]->{DISPLAY_WEEK_WORKTIME} = 1;
 	}
     }
-    $workdays[$#workdays]->{DISPLAY_WEEK_WORKTIME} = 1;
+    if($#workdays>=0) {
+	$workdays[$#workdays]->{DISPLAY_WEEK_WORKTIME} = 1;
+    }
 
     open(REPORT, "> ${base_filename}timereport.tex") or 
 	die "can't write time report: $!\n";
@@ -813,29 +908,37 @@ sub render_timereport {
 		     LAST_DATE  => ts_to_hr_date(ts_parse($last_date)),
 		     LOG_LOOP => \@workdays,
 		     OVERALL_WORKTIME => periode_to_str($overall_wt),
-		     OVERALL_SPARETIME => periode_to_str($overall_sparetime),
-		     OVERALL_SUM => periode_to_str($overall_sparetime + $overall_wt)
+		     OVERALL_HOLIDAY => periode_to_str($overall_holiday),
+		     OVERALL_ILL => periode_to_str($overall_ill),
+		     OVERALL_SUM => periode_to_str($overall_holiday + $overall_wt + $overall_ill),
+		     OVERALL_WEEKS => $overall_weeks
 		     );
     print REPORT $template->output();
     close REPORT;
-    system('texi2pdf', $base_filename . 'timereport.tex');
+    system('texi2pdf', '--batch', '--quiet', $base_filename . 'timereport.tex');
 
 }
 
 sub time_span {
     my $time_record = shift;
     my $ret = 0;
-    if(defined $time_record->{finish}) {
+
+    if(defined($time_record->{start}) and defined($time_record->{finish})) {
 	my ($Dd,$Dh,$Dm,$Ds) = Delta_DHMS( @{$time_record->{start}}, 
 					   @{$time_record->{finish}});
 	$ret = $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
     }
-    else {
+    elsif(defined($time_record->{start})) {
 	my ($Dd,$Dh,$Dm,$Ds) = Delta_DHMS( @{$time_record->{start}}, 
 					   Today_and_Now());
 	$ret = $Dd*86400 + $Dh*3600 + $Dm*60 + $Ds;
     }
-    die "invalid time: duration cannot be negative." if($ret < 0);
+    else {
+	die "+ Error: invalid time in record:\n" + Dumper($time_record);
+
+    }
+
+    die "+ Error: invalid time: duration cannot be negative." if($ret < 0);
     return $ret;
 }
 
