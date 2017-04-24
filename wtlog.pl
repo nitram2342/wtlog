@@ -228,7 +228,7 @@ my $customer = shift;
 my $cmd = shift;
 
 if((not defined $customer) or (not defined $cmd)) {
-    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport | holiday-priv | holiday-bank | ill | aza ] \n";
+    die "wtlog.pl <customer> [start | stop | edit | pause | info | list | timereport | holiday-priv | holiday-bank | ill | aza | work_time ] \n";
 }
 
 if($customer !~ m!^[a-z\d\_\-\.]+$!) {
@@ -289,22 +289,24 @@ elsif(($cmd eq 'finish') or ($cmd eq 'end') or ($cmd eq 'stop')) {
 	die "invalid state $record->{state}\n";
     }
 }
-elsif($cmd =~ m!^(holiday\-.*|ill|aza)$!) {
+elsif($cmd =~ m!^(holiday\-.*|ill|aza|work\_time)$!) {
     my $mode = lc($1);
     my $date = shift;
     my $hours = shift;
-
+    my $opt_comment = shift;
+    
     $mode =~ s!\-!_!g;
 
     if(not defined($date) or not defined($hours)) {
-	die "wtlog.pl <customer> <mode> <date> <hours>\n" .
+	die "wtlog.pl <customer> <mode> <date> <hours> [ <optional_log_comment> ]\n" .
 	    "\n" .
-	    "\t<mode> is 'holiday-bank', 'holiday-priv', 'ill' or 'aza''\n".
+	    "\t<mode> is 'holiday-bank', 'holiday-priv', 'ill', 'aza', or 'work_time'\n".
 	    "\t<date> is in the form of yyyy-mm-dd\n".
-	    "\t<hours> is the number of regular work hours.\n";
+	    "\t<hours> is the number of regular work hours.\n" .
+	    "\t<optional_log_comment> is an optional comment\n";
     }
 
-    create_record_by_mode($mode, $date, $hours);
+    create_record_by_mode($mode, $date, $hours, $opt_comment);
 
 }
 elsif($cmd eq 'edit') {
@@ -377,6 +379,7 @@ sub create_record_by_mode {
     my $mode = shift;
     my $date = shift;
     my $hours = shift;
+    my $opt_comment = shift;
 
     my $date_start = ts_parse($date);
     if(not defined $date_start) {
@@ -390,9 +393,9 @@ sub create_record_by_mode {
     
     my $record = {};
     push @{$record->{$mode}},  { start => $date_start,
-						finish => \@date_end};
+				 finish => \@date_end};
     $record->{state} =  'finished';
-    $record->{invoice_logs} = $mode;
+    $record->{invoice_logs} = $mode . "\n" . $opt_comment;
 
     my $new_filename = sprintf("$dir/%4d-%02d-%02d_%s.dat", $date_start->[0], $date_start->[1], $date_start->[2], $customer);
     write_record($new_filename, $record);
@@ -870,7 +873,7 @@ sub render_timereport {
 	}
 
 	if($week_ill > 0) {
-	    print "$week_ill XXXXXXXXXXXXX ", periode_to_str($week_ill) ,"\n";
+	    print "$week_ill ", periode_to_str($week_ill) ,"\n";
 	}
 
 	push @workdays, { WT_LOOP => \@tmp_records,
