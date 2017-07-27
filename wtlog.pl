@@ -14,6 +14,8 @@ use strict;
 my $dir = $ENV{HOME} . '/.wtlog';
 my $log_template = $dir . '/log_template.tex';
 
+my $enable_every_day_check = 1; # check if every day has been logged. Disable this if you are freelancer.
+
 # more includes
 
 use Data::Dumper;
@@ -747,6 +749,8 @@ sub render_timereport {
 
     my $overall_weeks = 0;
 
+    my $last_weekday_seen = 0;
+
     # first, check all files - load record and check state
     foreach my $file (@files) {
 	my $rec = load_record($file);
@@ -755,6 +759,7 @@ sub render_timereport {
 	}
     }
 
+    
     foreach my $file (@files) {
 
 	print "+ Processing file $file\n";
@@ -838,6 +843,21 @@ sub render_timereport {
 	$worktimes[0]->{WEEK_INFO} = "KW $week / " . $weekday_name[$week_day - 1];
 
 
+	# check for gaps - this code is only relevant for full time jobs	
+	if($enable_every_day_check and ($last_weekday_seen > 0)) {
+	    if(($week_day == 1) and not (($last_weekday_seen >= 5) and ($last_weekday_seen <= 7))) {
+		print "+ Error: last week did not end before or in weekend. There is likly a record missing\n";
+		exit(1);
+	    }
+	    elsif(($week_day > 1) and ($week_day <= 5) and ($last_weekday_seen +1 != $week_day)) {
+		print "+ Error: There is likly a record missing.\n";
+		exit(1);
+	    }
+	}
+
+	
+	$last_weekday_seen = $week_day;
+	
 	# prepare text log entry
 	my $log = "\n" . $rec->{invoice_logs};
 	$log =~ s!\n+$!!s;
